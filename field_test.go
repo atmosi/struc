@@ -37,6 +37,26 @@ func TestEmptyLengthField(t *testing.T) {
 	}
 }
 
+type stringArrayField struct {
+	Array [2]string `struc:"[2][4]byte"`
+}
+
+func TestStringArrayField(t *testing.T) {
+	buf := bytes.NewBuffer([]byte("12345678"))
+	s := &stringArrayField{}
+	//if err := Pack(&buf, s); err != nil {
+	//	t.Fatal(err)
+	//}
+	if err := Unpack(buf, s); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(s.Array[0])
+	t.Log(s.Array[1])
+	if s.Array[0] != "12" || s.Array[1] != "34" {
+		t.Fatal("string array field unpack failed")
+	}
+}
+
 type fixedSlicePad struct {
 	Field []byte `struc:"[4]byte"`
 }

@@ -250,6 +250,8 @@ func (f *Field) unpackVal(buf []byte, val reflect.Value, length int, options *Op
 			n = uint64(order.Uint64(buf))
 		}
 		switch f.kind {
+		case reflect.String:
+			val.SetString(string(buf[:length]))
 		case reflect.Bool:
 			val.SetBool(n != 0)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -265,17 +267,27 @@ func (f *Field) unpackVal(buf []byte, val reflect.Value, length int, options *Op
 
 func (f *Field) Unpack(buf []byte, val reflect.Value, length int, options *Options) error {
 	typ := f.Type.Resolve(options)
-	if typ == Ignore {
+	switch {
+	case typ == Ignore, typ == Pad:
 		return nil
-	}
-	if typ == Pad || f.kind == reflect.String {
-		if typ == Pad {
-			return nil
-		} else {
-			val.SetString(string(buf))
-			return nil
+	case f.Array && f.kind == reflect.String:
+		// Handle fixed-size string arrays
+		pos := 0
+		size := typ.Size()
+		for i := 0; i < val.Len(); i++ {
+			if pos+size > len(buf) {
+				return fmt.Errorf("buffer too small for array unpack")
+			}
+			if err := f.unpackVal(buf[pos:pos+size], val.Index(i), 1, options); err != nil {
+				return err
+			}
+			pos += size
 		}
-	} else if f.Slice {
+		return nil
+	case f.Slice:
+		if f.kind == reflect.String {
+			return f.unpackVal(buf, val, length, options)
+		}
 		if val.Cap() < length {
 			val.Set(reflect.MakeSlice(val.Type(), length, length))
 		} else if val.Len() < length {
@@ -295,7 +307,10 @@ func (f *Field) Unpack(buf []byte, val reflect.Value, length int, options *Optio
 			pos += size
 		}
 		return nil
-	} else {
-		return f.unpackVal(buf, val, length, options)
+	case f.kind == reflect.String:
+		val.SetString(string(buf))
+		return nil
 	}
+
+	return f.unpackVal(buf, val, length, options)
 }
