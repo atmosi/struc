@@ -164,6 +164,34 @@ func (f *Field) Pack(buf []byte, val reflect.Value, length int, options *Options
 	if typ == Ignore {
 		return 0, nil
 	}
+
+	// Special case for array of strings
+	if f.Array && f.kind == reflect.String && typ == Uint8 {
+		arrayLen := val.Len()
+		strSize := length / arrayLen
+
+		// Fast path: zero out the entire buffer first
+		for i := 0; i < length; i++ {
+			buf[i] = 0
+		}
+
+		// Then copy each string into its slot
+		for i := 0; i < arrayLen; i++ {
+			str := val.Index(i).String()
+			strBytes := []byte(str)
+
+			// Copy string bytes up to the fixed size
+			copyLen := len(strBytes)
+			if copyLen > strSize {
+				copyLen = strSize
+			}
+
+			copy(buf[i*strSize:], strBytes[:copyLen])
+		}
+
+		return length, nil
+	}
+
 	if f.Slice {
 		// special case strings and byte slices for performance
 		end := val.Len()
@@ -265,27 +293,75 @@ func (f *Field) unpackVal(buf []byte, val reflect.Value, length int, options *Op
 
 func (f *Field) Unpack(buf []byte, val reflect.Value, length int, options *Options) error {
 	typ := f.Type.Resolve(options)
+	if typ == Pad {
+		return nil
+	}
 	if typ == Ignore {
 		return nil
 	}
-	if typ == Pad || f.kind == reflect.String {
-		if typ == Pad {
-			return nil
-		} else {
-			val.SetString(string(buf))
+
+	// Special case for array of strings
+	if f.Array && f.kind == reflect.String && typ == Uint8 {
+		arrayLen := val.Len()
+		strSize := length / arrayLen
+
+		for i := 0; i < arrayLen; i++ {
+			// Extract the string bytes
+			start := i * strSize
+			end := start + strSize
+
+			// Find null terminator if present
+			nullPos := bytes.IndexByte(buf[start:end], 0)
+			if nullPos >= 0 {
+				// String is null-terminated
+				val.Index(i).SetString(string(buf[start : start+nullPos]))
+			} else {
+				// No null terminator, use the entire buffer segment
+				val.Index(i).SetString(string(buf[start:end]))
+			}
+		}
+
+		return nil
+	}
+
+	if f.kind == reflect.String && !f.Array {
+		val.SetString(string(buf))
+		return nil
+	}
+
+	if f.Slice {
+		if f.Array {
+			// handle arrays
+			if f.Len > 0 {
+				length = f.Len
+			}
+			if val.Len() < length {
+				return fmt.Errorf("struc: array too small: %d < %d", val.Len(), length)
+			}
+			for i := 0; i < length; i++ {
+				if err := f.unpackVal(buf, val.Index(i), 1, options); err != nil {
+					return err
+				}
+				buf = buf[typ.Size():]
+			}
 			return nil
 		}
-	} else if f.Slice {
+		// handle slices
+		if f.Len > 0 {
+			length = f.Len
+		}
 		if val.Cap() < length {
 			val.Set(reflect.MakeSlice(val.Type(), length, length))
 		} else if val.Len() < length {
 			val.Set(val.Slice(0, length))
 		}
+
 		// special case byte slices for performance
 		if !f.Array && typ == Uint8 && f.defType == Uint8 {
 			copy(val.Bytes(), buf[:length])
 			return nil
 		}
+
 		pos := 0
 		size := typ.Size()
 		for i := 0; i < length; i++ {

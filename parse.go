@@ -99,6 +99,12 @@ func parseField(f reflect.StructField) (fd *Field, tag *strucTag, err error) {
 				fd.Len = -1
 			} else {
 				fd.Len, err = strconv.Atoi(first)
+				
+				// Special case for array of strings with byte array tag
+				if fd.Array && fd.kind == reflect.String && pureType == "byte" {
+					// Multiply the byte array size by the number of strings in the array
+					fd.Len *= f.Type.Len()
+				}
 			}
 		}
 		return
