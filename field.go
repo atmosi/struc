@@ -168,24 +168,24 @@ func (f *Field) Pack(buf []byte, val reflect.Value, length int, options *Options
 	// Special case for array of strings
 	if f.Array && f.kind == reflect.String && typ == Uint8 {
 		arrayLen := val.Len()
+		if arrayLen == 0 {
+			return 0, nil
+		}
+
 		strSize := length / arrayLen
 
-		// Fast path: zero out the entire buffer first
-		for i := 0; i < length; i++ {
+		// Zero out the buffer efficiently
+		for i := range buf[:length] {
 			buf[i] = 0
 		}
 
-		// Then copy each string into its slot
+		// Copy each string into its slot
 		for i := 0; i < arrayLen; i++ {
 			str := val.Index(i).String()
 			strBytes := []byte(str)
 
 			// Copy string bytes up to the fixed size
-			copyLen := len(strBytes)
-			if copyLen > strSize {
-				copyLen = strSize
-			}
-
+			copyLen := int(math.Min(float64(len(strBytes)), float64(strSize)))
 			copy(buf[i*strSize:], strBytes[:copyLen])
 		}
 
@@ -303,20 +303,30 @@ func (f *Field) Unpack(buf []byte, val reflect.Value, length int, options *Optio
 	// Special case for array of strings
 	if f.Array && f.kind == reflect.String && typ == Uint8 {
 		arrayLen := val.Len()
-		strSize := length / arrayLen
+		if arrayLen == 0 {
+			return nil
+		}
 
-		for i := 0; i < arrayLen; i++ {
-			// Extract the string bytes
+		// Safety check for buffer size
+		if len(buf) == 0 {
+			return nil
+		}
+
+		strSize := int(math.Min(float64(length/arrayLen), float64(len(buf)/arrayLen)))
+		if strSize == 0 {
+			strSize = 1
+		}
+
+		for i := 0; i < arrayLen && i*strSize < len(buf); i++ {
+			// Calculate string boundaries
 			start := i * strSize
-			end := start + strSize
+			end := int(math.Min(float64(start+strSize), float64(len(buf))))
 
 			// Find null terminator if present
 			nullPos := bytes.IndexByte(buf[start:end], 0)
 			if nullPos >= 0 {
-				// String is null-terminated
 				val.Index(i).SetString(string(buf[start : start+nullPos]))
 			} else {
-				// No null terminator, use the entire buffer segment
 				val.Index(i).SetString(string(buf[start:end]))
 			}
 		}

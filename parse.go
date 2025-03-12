@@ -52,7 +52,7 @@ func parseStrucTag(tag reflect.StructTag) *strucTag {
 	return t
 }
 
-var typeLenRe = regexp.MustCompile(`^\[(\d*)\]`)
+var typeLenRe = regexp.MustCompile(`\[(\d*)\]`)
 
 func parseField(f reflect.StructField) (fd *Field, tag *strucTag, err error) {
 	tag = parseStrucTag(f.Tag)
@@ -91,19 +91,46 @@ func parseField(f reflect.StructField) (fd *Field, tag *strucTag, err error) {
 	if fd.Type, ok = typeLookup[pureType]; ok {
 		fd.Len = 1
 		match := typeLenRe.FindAllStringSubmatch(tag.Type, -1)
-		if len(match) > 0 && len(match[0]) > 1 {
+		if len(match) > 0 {
 			fd.Slice = true
-			first := match[0][1]
-			// Field.Len = -1 indicates a []slice
-			if first == "" {
-				fd.Len = -1
-			} else {
-				fd.Len, err = strconv.Atoi(first)
+			
+			// Handle array dimensions
+			if len(match) > 1 {
+				// For multi-dimensional arrays like [32][256]byte
+				totalLen := 1
+				for _, dim := range match {
+					if len(dim) > 1 && dim[1] != "" {
+						dimSize, parseErr := strconv.Atoi(dim[1])
+						if parseErr != nil {
+							err = fmt.Errorf("struc: invalid array dimension: %s", dim[1])
+							return
+						}
+						totalLen *= dimSize
+					}
+				}
+				fd.Len = totalLen
 				
 				// Special case for array of strings with byte array tag
 				if fd.Array && fd.kind == reflect.String && pureType == "byte" {
-					// Multiply the byte array size by the number of strings in the array
-					fd.Len *= f.Type.Len()
+					// No need for additional multiplication as we've already calculated total size
+				}
+			} else if len(match[0]) > 1 {
+				// Single dimension
+				first := match[0][1]
+				// Field.Len = -1 indicates a []slice
+				if first == "" {
+					fd.Len = -1
+				} else {
+					fd.Len, err = strconv.Atoi(first)
+					if err != nil {
+						return
+					}
+					
+					// Special case for array of strings with byte array tag
+					if fd.Array && fd.kind == reflect.String && pureType == "byte" {
+						// Multiply the byte array size by the number of strings in the array
+						fd.Len *= f.Type.Len()
+					}
 				}
 			}
 		}
