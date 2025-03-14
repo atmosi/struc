@@ -41,6 +41,22 @@ jobs:
       with:
         go-version: '1.20'
 
+    # Fetch and merge steps
+    - name: Fetch all branches
+      run: |
+        git fetch --prune --unshallow
+        git fetch origin ${GITHUB_BASE_REF:-master}
+      env:
+        GITHUB_BASE_REF: ${{ github.base_ref }}
+
+    - name: Merge target branch
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git merge origin/${GITHUB_BASE_REF:-master} --no-edit
+      env:
+        GITHUB_BASE_REF: ${{ github.base_ref }}
+
     - name: Build
       run: go build -v ./...
       env:
