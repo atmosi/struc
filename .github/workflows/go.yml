@@ -23,6 +23,10 @@ jobs:
 
     - name: Build
       run: go build -v ./...
+      env:
+        GO111MODULE: off
 
     - name: Test
       run: go test -v ./...
+      env:
+        GO111MODULE: off
