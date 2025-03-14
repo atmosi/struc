@@ -1,8 +1,8 @@
 package test_pack_init
 
 import (
+	struc ".."
 	"bytes"
-	"github.com/lunixbochs/struc"
 	"sync"
 	"testing"
 )

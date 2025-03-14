@@ -25,8 +25,10 @@ jobs:
       run: go build -v ./...
       env:
         GO111MODULE: off
+        GOPATH: ${{ github.workspace }}
 
     - name: Test
       run: go test -v ./...
       env:
         GO111MODULE: off
+        GOPATH: ${{ github.workspace }}
