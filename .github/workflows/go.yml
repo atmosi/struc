@@ -8,13 +8,33 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  # Add workflow_dispatch for manual triggering
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to run against'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for running'
+        required: false
+        default: 'Manual verification'
+        type: string
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    # Conditional checkout based on trigger type
+    - name: Checkout PR
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/checkout@v4
+      with:
+        ref: refs/pull/${{ github.event.inputs.pr_number }}/head
+
+    - name: Regular checkout
+      if: github.event_name != 'workflow_dispatch'
+      uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v4
